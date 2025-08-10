@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Peta Potensi UMKM Desa Somagede</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Add Easy Button for menu -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.EasyButton/2.4.0/easy-button.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.EasyButton/2.4.0/easy-button.js"></script>
+    <link rel="stylesheet" type="text/css" href="1.css">
+    <script src="atribut.js"></script>
+</head>
+
+<body>
+    <div class="title-container fade-in">
+        <h1>🏪 Peta Potensi UMKM Desa Somagede</h1>
+    </div>
+    <div id="map"></div>
+    
+    <!-- Container untuk tombol-tombol kontrol dinamis -->
+    <div id="control-buttons" class="control-buttons">
+        <!-- Tombol akan ditambahkan melalui JavaScript -->
+    </div>
+    
+    <!-- Menu Container -->
+    <div id="menu-container" class="menu-container">
+        <span class="close-menu" onclick="toggleMenu()">&times;</span>
+        <h3 style="color: #2c3e50; margin-bottom: 20px; font-weight: 600;">📍 Menu Navigasi</h3>
+        
+        <!-- Search in menu -->
+        <div class="menu-search">
+            <input type="text" id="menu-search-input" placeholder="Cari UMKM..." />
+            <button onclick="searchUMKM()"><i class="fas fa-search"></i></button>
+        </div>
+        
+        <div class="menu-option" onclick="showAbout()">
+            <i class="fas fa-info-circle"></i> <span>Tentang Peta</span>
+        </div>
+        <div class="menu-option" onclick="showStatistics()">
+            <i class="fas fa-chart-bar"></i> <span>Statistik UMKM</span>
+        </div>
+        <div class="menu-option" onclick="showCategories()">
+            <i class="fas fa-tags"></i> <span>Kategori Produk</span>
+        </div>
+        <div class="menu-option" onclick="showHelp()">
+            <i class="fas fa-question-circle"></i> <span>Bantuan</span>
+        </div>
+        
+        <!-- Legend -->
+        <div class="menu-legend">
+            <h4>📋 Legenda</h4>
+            <div class="legend-item">
+                <div class="legend-icon"><i class="fas fa-store"></i></div>
+                <span>UMKM Desa Somagede</span>
+            </div>
+            <div style="margin-top: 15px; padding: 12px; background: rgba(46, 204, 113, 0.1); border-radius: 8px; border-left: 4px solid #2ecc71;">
+                <b>📊 Total UMKM:</b> <span id="umkm-count" style="color: #27ae60; font-weight: 600;"></span><br>
+                <b>🎯 Fokus Area:</b> Desa Somagede<br>
+                <b>📈 Status:</b> Aktif & Berkembang
+            </div>
+        </div>
+    </div>
+    
+    <script>
+
+        
+        // Inisialisasi peta
+        var map = L.map('map', {
+            center: [-7.525, 109.330],
+            zoom: 13,
+            zoomControl: false
+        });
+        
+        // Add zoom control in a different position
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(map);
+        
+        // Basemaps - Satelit sebagai default
+        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri'
+        }).addTo(map); // Satelit sebagai basemap utama
+        
+        var openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+        
+        var terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenTopoMap'
+        });
+        
+        // UMKM icon
+        var umkmIcon = L.divIcon({
+            className: 'umkm-icon',
+            html: '<div style="background: linear-gradient(45deg, #e74c3c, #c0392b); border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(231, 76, 60, 0.3); border: 2px solid white;"><i class="fas fa-store" style="color: white; font-size: 12px;"></i></div>',
+            iconSize: [25, 25],
+            iconAnchor: [12, 12],
+            popupAnchor: [0, -12]
+        });
+        
+        // Create marker cluster group
+        var markers = L.markerClusterGroup({
+            disableClusteringAtZoom: 15,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: true,
+            zoomToBoundsOnClick: true
+        });
+        
+        // Array untuk pencarian
+        var searchableLayers = [];
+        
+        // Konversi data dari GeoJSON format ke format yang diperlukan
+        var processedUMKMData = [];
+        
+        if (typeof UMKM_DATA !== 'undefined' && UMKM_DATA[0] && UMKM_DATA[0].features) {
+            UMKM_DATA[0].features.forEach(function(feature) {
+                var props = feature.properties;
+                var coords = feature.geometry.coordinates;
+                
+                processedUMKMData.push({
+                    nama: props.nama || 'Tidak diketahui',
+                    produk: props.produk || 'Tidak tersedia',
+                    harga: props.harga,
+                    kontak: props.kontak,
+                    pengiriman: props.pengiriman,
+                    catatan_tambahan: props.catatan_tambahan,
+                    lat: coords[1], // latitude adalah index 1 dalam GeoJSON
+                    lng: coords[0]  // longitude adalah index 0 dalam GeoJSON
+                });
+            });
+        }
+        
+        // Add UMKM markers
+        processedUMKMData.forEach(function(umkm, index) {
+            if (umkm.lat && umkm.lng) {
+                var popupContent = `
+                    <div class="custom-popup">
+                        <h3>🏪 ${umkm.nama}</h3>
+                        <div class="info-row">
+                            <span class="info-label">🛍️ Produk:</span>
+                            <span class="info-value">${umkm.produk || 'Tidak tersedia'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">💰 Harga:</span>
+                            <span class="info-value">
+                                ${umkm.harga && umkm.harga !== '-' && umkm.harga !== null ? 
+                                  '<span class="price">Rp ' + (typeof umkm.harga === 'string' ? umkm.harga : parseInt(umkm.harga).toLocaleString('id-ID')) + '</span>' : 
+                                  'Hubungi langsung'}
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">📞 Kontak:</span>
+                            <span class="info-value">${umkm.kontak && umkm.kontak !== '-' && umkm.kontak !== 'n/a' && umkm.kontak !== null ? umkm.kontak : 'Tidak tersedia'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">🚚 Pengiriman:</span>
+                            <span class="info-value">${umkm.pengiriman === 'ya' ? '✅ Tersedia' : '❌ Tidak tersedia'}</span>
+                        </div>
+                        ${umkm.catatan_tambahan && umkm.catatan_tambahan !== 'n/a' && umkm.catatan_tambahan !== null ? 
+                          '<div class="info-row"><span class="info-label">📝 Catatan:</span><span class="info-value">' + umkm.catatan_tambahan + '</span></div>' : ''}
+                        <div class="action-buttons">
+                            <a href="#" class="action-btn" onclick="showUMKMDetails(${index}); return false;">
+                                <i class="fas fa-info-circle"></i> Detail
+                            </a>
+                            <a href="#" class="action-btn" onclick="getDirections(${umkm.lat}, ${umkm.lng}); return false;">
+                                <i class="fas fa-directions"></i> Rute
+                            </a>
+                        </div>
+                    </div>
+                `;
+                
+                var marker = L.marker([umkm.lat, umkm.lng], {
+                    icon: umkmIcon,
+                    title: umkm.nama
+                }).bindPopup(popupContent);
+                
+                markers.addLayer(marker);
+                
+                searchableLayers.push({
+                    loc: [umkm.lat, umkm.lng],
+                    title: umkm.nama + " - " + umkm.produk,
+                    layer: marker,
+                    data: umkm
+                });
+            }
+        });
+        
+        map.addLayer(markers);
+        
+        // Update UMKM count
+        document.getElementById('umkm-count').innerText = processedUMKMData.length + " UMKM";
+        
+        // Global variables for popups
+        var currentPopup = null;
+        
+        // Functions
+        function closeCurrentPopup() {
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+                currentPopup = null;
+            }
+        }
+        
+        function closeMenu() {
+            document.getElementById('menu-container').style.display = 'none';
+        }
+        
+        function toggleMenu() {
+            var menuContainer = document.getElementById('menu-container');
+            if (menuContainer.style.display === 'block') {
+                menuContainer.style.display = 'none';
+            } else {
+                menuContainer.style.display = 'block';
+                closeCurrentPopup();
+            }
+        }
+        
+        function searchUMKM() {
+            var searchText = document.getElementById('menu-search-input').value.toLowerCase();
+            closeMenu();
+            closeCurrentPopup();
+            
+            var found = false;
+            for (var i = 0; i < searchableLayers.length; i++) {
+                var item = searchableLayers[i];
+                if (item.title.toLowerCase().includes(searchText)) {
+                    map.setView(item.loc, 16);
+                    item.layer.openPopup();
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found && searchText.trim() !== '') {
+                alert('UMKM tidak ditemukan');
+            }
+        }
+        
+        function performMapSearch() {
+            var searchText = document.getElementById('map-search-input').value.toLowerCase();
+            closeMenu();
+            closeCurrentPopup();
+            
+            var found = false;
+            for (var i = 0; i < searchableLayers.length; i++) {
+                var item = searchableLayers[i];
+                if (item.title.toLowerCase().includes(searchText)) {
+                    map.setView(item.loc, 16);
+                    item.layer.openPopup();
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found && searchText.trim() !== '') {
+                alert('UMKM tidak ditemukan');
+            }
+        }
+        
+        function showAbout() {
+            closeCurrentPopup();
+            var popup = L.popup({
+                maxWidth: 350
+            })
+            .setLatLng(map.getCenter())
+            .setContent(`
+                <h3>🏪 Tentang Peta UMKM</h3>
+                <p>Peta ini menampilkan sebaran Usaha Mikro Kecil Menengah (UMKM) di Desa Somagede.</p>
+                <p><b>Fitur utama:</b></p>
+                <ul>
+                    <li>📍 Lokasi UMKM dengan detail produk</li>
+                    <li>💰 Informasi harga dan kontak</li>
+                    <li>🚚 Status ketersediaan pengiriman</li>
+                    <li>🔍 Pencarian UMKM</li>
+                    <li>📊 Statistik dan kategori produk</li>
+                </ul>
+                <p><i>Peta ini dibuat untuk mendukung ekonomi lokal dan memudahkan akses ke produk UMKM.</i></p>
+                <p><b>KKN-PPM UGM SATRIA KAMANDAKA 2025</b></p>
+            `)
+            .openOn(map);
+            currentPopup = popup;
+            toggleMenu();
+        }
+        
+        function showStatistics() {
+            closeCurrentPopup();
+            
+            // Calculate statistics
+            var totalUMKM = processedUMKMData.length;
+            var withPrice = processedUMKMData.filter(u => u.harga && u.harga !== '-' && u.harga !== null).length;
+            var withDelivery = processedUMKMData.filter(u => u.pengiriman === 'ya').length;
+            var categories = {};
+            
+            processedUMKMData.forEach(function(umkm) {
+                if (umkm.produk) {
+                    var category = umkm.produk.split(',')[0].trim();
+                    categories[category] = (categories[category] || 0) + 1;
+                }
+            });
+            
+            var categoriesList = Object.keys(categories).map(function(key) {
+                return '<li>' + key + ': ' + categories[key] + ' UMKM</li>';
+            }).join('');
+            
+            var popup = L.popup({
+                maxWidth: 400
+            })
+            .setLatLng(map.getCenter())
+            .setContent(`
+                <h3>📊 Statistik UMKM Desa Somagede</h3>
+                <div style="background: linear-gradient(45deg, #3498db, #2980b9); color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span><i class="fas fa-store"></i> Total UMKM:</span>
+                        <strong>${totalUMKM}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span><i class="fas fa-money-bill"></i> Dengan Info Harga:</span>
+                        <strong>${withPrice}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span><i class="fas fa-truck"></i> Layanan Antar:</span>
+                        <strong>${withDelivery}</strong>
+                    </div>
+                </div>
+                <div>
+                    <h4>🏷️ Kategori Produk:</h4>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        ${categoriesList}
+                    </ul>
+                </div>
+                <div style="background: #ecf0f1; padding: 10px; border-radius: 8px; margin-top: 15px;">
+                    <small><i class="fas fa-chart-line"></i> Data ini membantu memahami potensi ekonomi lokal Desa Somagede</small>
+                </div>
+            `)
+            .openOn(map);
+            currentPopup = popup;
+            toggleMenu();
+        }
+        
+        function showCategories() {
+            closeCurrentPopup();
+            
+            var categories = {};
+            processedUMKMData.forEach(function(umkm) {
+                if (umkm.produk) {
+                    var products = umkm.produk.split(',');
+                    products.forEach(function(product) {
+                        var category = product.trim();
+                        if (!categories[category]) {
+                            categories[category] = [];
+                        }
+                        categories[category].push(umkm.nama);
+                    });
+                }
+            });
+            
+            var categoryContent = Object.keys(categories).map(function(category) {
+                var businesses = categories[category].join(', ');
+                return `
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(52, 152, 219, 0.1); border-radius: 8px;">
+                        <h4 style="margin: 0 0 5px 0; color: #2c3e50;">🏷️ ${category}</h4>
+                        <p style="margin: 0; font-size: 13px; color: #7f8c8d;">${businesses}</p>
+                    </div>
+                `;
+            }).join('');
+            
+            var popup = L.popup({
+                maxWidth: 400
+            })
+            .setLatLng(map.getCenter())
+            .setContent(`
+                <h3>🎯 Kategori Produk UMKM</h3>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    ${categoryContent}
+                </div>
+                <div style="background: #2ecc71; color: white; padding: 10px; border-radius: 8px; margin-top: 15px; text-align: center;">
+                    <small><i class="fas fa-leaf"></i> Dukung produk lokal untuk ekonomi yang berkelanjutan!</small>
+                </div>
+            `)
+            .openOn(map);
+            currentPopup = popup;
+            toggleMenu();
+        }
+        
+        function showHelp() {
+            closeCurrentPopup();
+            var popup = L.popup({
+                maxWidth: 350
+            })
+            .setLatLng(map.getCenter())
+            .setContent(`
+                <h3>❓ Panduan Penggunaan</h3>
+                <div style="text-align: left;">
+                    <p><b>🗺️ Navigasi Peta:</b></p>
+                    <ul style="margin: 5px 0; padding-left: 20px; font-size: 14px;">
+                        <li>Geser peta dengan mouse/touch</li>
+                        <li>Zoom dengan scroll atau tombol +/-</li>
+                        <li>Klik ikon UMKM untuk detail</li>
+                    </ul>
+                    
+                    <p><b>🔍 Pencarian:</b></p>
+                    <ul style="margin: 5px 0; padding-left: 20px; font-size: 14px;">
+                        <li>Gunakan kotak pencarian di menu</li>
+                        <li>Cari berdasarkan nama atau produk</li>
+                    </ul>
+                    
+                    <p><b>📱 Fitur Lainnya:</b></p>
+                    <ul style="margin: 5px 0; padding-left: 20px; font-size: 14px;">
+                        <li>Lihat statistik di menu</li>
+                        <li>Ganti tampilan peta (satellite/terrain)</li>
+                        <li>Dapatkan rute ke lokasi UMKM</li>
+                    </ul>
+                </div>
+                <div style="background: #f39c12; color: white; padding: 8px; border-radius: 6px; margin-top: 10px; text-align: center;">
+                    <small>💡 Tips: Klik marker untuk melihat info lengkap UMKM</small>
+                </div>
+            `)
+            .openOn(map);
+            currentPopup = popup;
+            toggleMenu();
+        }
+        
+        function showUMKMDetails(index) {
+            closeCurrentPopup();
+            closeMenu();
+            
+            var umkm = processedUMKMData[index];
+            if (!umkm) return;
+            
+            var popup = L.popup({
+                maxWidth: 400
+            })
+            .setLatLng([umkm.lat, umkm.lng])
+            .setContent(`
+                <h3>🏪 Detail ${umkm.nama}</h3>
+                <div style="background: linear-gradient(45deg, #3498db, #2980b9); color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <div style="text-align: center;">
+                        <i class="fas fa-store fa-2x" style="margin-bottom: 10px;"></i>
+                        <h4 style="margin: 0;">${umkm.nama}</h4>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">📋 Informasi Lengkap</h4>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                        <p><strong>🛍️ Produk:</strong> ${umkm.produk || 'Tidak tersedia'}</p>
+                        <p><strong>💰 Harga:</strong> ${umkm.harga && umkm.harga !== '-' && umkm.harga !== null ? 
+                            (typeof umkm.harga === 'string' ? 'Rp ' + umkm.harga : 'Rp ' + parseInt(umkm.harga).toLocaleString('id-ID')) : 'Hubungi langsung'}</p>
+                        <p><strong>📞 Kontak:</strong> ${umkm.kontak && umkm.kontak !== '-' && umkm.kontak !== 'n/a' && umkm.kontak !== null ? umkm.kontak : 'Tidak tersedia'}</p>
+                        <p><strong>🚚 Pengiriman:</strong> ${umkm.pengiriman === 'ya' ? '✅ Tersedia' : '❌ Tidak tersedia'}</p>
+                        <p><strong>📍 Koordinat:</strong> ${umkm.lat.toFixed(6)}, ${umkm.lng.toFixed(6)}</p>
+                        ${umkm.catatan_tambahan && umkm.catatan_tambahan !== 'n/a' && umkm.catatan_tambahan !== null ? '<p><strong>📝 Catatan:</strong> ' + umkm.catatan_tambahan + '</p>' : ''}
+                    </div>
+                </div>
+                
+                <div style="background: #27ae60; color: white; padding: 10px; border-radius: 8px; text-align: center;">
+                    <small><i class="fas fa-heart"></i> Mari dukung UMKM lokal untuk kemajuan bersama!</small>
+                </div>
+            `)
+            .openOn(map);
+            currentPopup = popup;
+        }
+        
+        function getDirections(lat, lng) {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var userLat = position.coords.latitude;
+                    var userLng = position.coords.longitude;
+                    var googleMapsUrl = `https://www.google.com/maps/dir/${userLat},${userLng}/${lat},${lng}`;
+                    window.open(googleMapsUrl, '_blank');
+                }, function() {
+                    var googleMapsUrl = `https://www.google.com/maps/dir//${lat},${lng}`;
+                    window.open(googleMapsUrl, '_blank');
+                });
+            } else {
+                var googleMapsUrl = `https://www.google.com/maps/dir//${lat},${lng}`;
+                window.open(googleMapsUrl, '_blank');
+            }
+        }
+        
+        // Add search control
+        var searchControl = L.control({
+            position: 'topleft'
+        });
+
+        searchControl.onAdd = function(map) {
+            var div = L.DomUtil.create('div', 'leaflet-control leaflet-control-search');
+            div.innerHTML = `
+                <div class="search-container">
+                    <input type="text" id="map-search-input" placeholder="Cari UMKM..." />
+                    <button id="search-button"><i class="fas fa-search"></i></button>
+                </div>
+            `;
+            
+            L.DomEvent.disableClickPropagation(div);
+            
+            setTimeout(function() {
+                document.getElementById('search-button').addEventListener('click', performMapSearch);
+                document.getElementById('map-search-input').addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        performMapSearch();
+                    }
+                });
+            }, 100);
+            
+            return div;
+        };
+
+        searchControl.addTo(map);
+        
+        // Menu button
+        L.easyButton('<i class="fas fa-bars"></i>', function() {
+            toggleMenu();
+        }, 'Menu Utama', {
+            position: 'topleft'
+        }).addTo(map);
+        
+        // Control buttons
+        var controlButtonsContainer = document.getElementById('control-buttons');
+        
+        // Home button
+        var homeButton = document.createElement('button');
+        homeButton.className = 'control-button';
+        homeButton.innerHTML = '<i class="fas fa-home"></i><span>Tampilan Awal</span>';
+        homeButton.onclick = function() {
+            map.setView([-7.525, 109.330], 13);
+            closeCurrentPopup();
+        };
+        controlButtonsContainer.appendChild(homeButton);
+        
+        // Show all UMKM button
+        var showAllButton = document.createElement('button');
+        showAllButton.className = 'control-button';
+        showAllButton.innerHTML = '<i class="fas fa-map-marked-alt"></i><span>Lihat Semua</span>';
+        showAllButton.onclick = function() {
+            var group = new L.featureGroup(searchableLayers.map(item => item.layer));
+            map.fitBounds(group.getBounds().pad(0.1));
+            closeCurrentPopup();
+        };
+        controlButtonsContainer.appendChild(showAllButton);
+        
+        // My location button
+        var locationButton = document.createElement('button');
+        locationButton.className = 'control-button';
+        locationButton.innerHTML = '<i class="fas fa-location-arrow"></i><span>Lokasi Saya</span>';
+        locationButton.onclick = function() {
+            map.locate({setView: true, maxZoom: 16});
+            
+            map.on('locationfound', function(e) {
+                if (this.locationMarker) {
+                    map.removeLayer(this.locationMarker);
+                    map.removeLayer(this.locationCircle);
+                }
+                
+                this.locationMarker = L.marker(e.latlng).addTo(map)
+                    .bindPopup("📍 Lokasi Anda saat ini").openPopup();
+                
+                this.locationCircle = L.circle(e.latlng, e.accuracy / 2, {
+                    color: '#3498db',
+                    fillColor: '#3498db',
+                    fillOpacity: 0.2
+                }).addTo(map);
+            });
+            
+            map.on('locationerror', function(e) {
+                alert("❌ Tidak dapat menemukan lokasi Anda: " + e.message);
+            });
+        };
+        controlButtonsContainer.appendChild(locationButton);
+        
+        // Layer control
+        var baseMaps = {
+            "🛰️ Satelit": satellite,
+            "🗺️ Open Street Map": openStreetMap,
+            "🏔️ Terrain": terrain
+        };
+
+        var overlayMaps = {
+            "🏪 UMKM": markers
+        };
+
+        L.control.layers(baseMaps, overlayMaps, {
+            position: 'topright'
+        }).addTo(map);
+        
+        // Scale control
+        L.control.scale({
+            imperial: false,
+            position: 'bottomright'
+        }).addTo(map);
+        
+        // Event listeners
+        map.on('click', function() {
+            closeMenu();
+        });
+        
+        // Fit bounds to show all UMKM
+        if (searchableLayers.length > 0) {
+            var group = new L.featureGroup(searchableLayers.map(item => item.layer));
+            map.fitBounds(group.getBounds().pad(0.1));
+        }
+        
+        // Add some animation effects
+        setTimeout(function() {
+            document.querySelector('.title-container').classList.add('pulse');
+        }, 2000);
+        
+        // Welcome message
+        setTimeout(function() {
+            var welcomePopup = L.popup({
+                closeButton: true,
+                autoClose: false,
+                className: 'welcome-popup'
+            })
+            .setLatLng(map.getCenter())
+            .setContent(`
+                <div style="text-align: center; padding: 10px;">
+                    <h3 style="color: #2c3e50; margin-bottom: 15px;">🎉 Selamat Datang!</h3>
+                    <p style="margin-bottom: 15px;">Jelajahi <strong>${processedUMKMData.length} UMKM</strong> di Desa Somagede</p>
+                    <div style="background: linear-gradient(45deg, #27ae60, #2ecc71); color: white; padding: 10px; border-radius: 8px;">
+                        <small><i class="fas fa-mouse-pointer"></i> Klik marker untuk detail lengkap</small>
+                    </div>
+                </div>
+            `)
+            .openOn(map);
+            
+            currentPopup = welcomePopup;
+            
+            // Auto close welcome popup after 5 seconds
+            setTimeout(function() {
+                if (currentPopup === welcomePopup) {
+                    map.closePopup(welcomePopup);
+                    currentPopup = null;
+                }
+            }, 5000);
+        }, 1000);
+        
+    </script>
+</body>
+</html>
